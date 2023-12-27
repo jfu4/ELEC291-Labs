@@ -1,0 +1,852 @@
+0000              1   ; LCD_test_4bit.asm: Initializes and uses an LCD in 4-bit mode
+0000              2   ; using the most common procedure found on the internet.
+                  4   $LIST
+0000              6   
+0000              7   org 0000H
+0000 0200AD       8       ljmp myprogram
+0003              9   
+0003             10   ; These 'equ' must match the hardware wiring
+0003             11   LCD_RS equ P3.2
+0003             12   ;LCD_RW equ PX.X ; Not used in this code, connect the pin to GND
+0003             13   LCD_E  equ P3.3
+0003             14   LCD_D4 equ P3.4
+0003             15   LCD_D5 equ P3.5
+0003             16   LCD_D6 equ P3.6
+0003             17   LCD_D7 equ P3.7
+0003             18   
+0003             19   ; When using a 22.1184MHz crystal in fast mode
+0003             20   ; one cycle takes 1.0/22.1184MHz = 45.21123 ns
+0003             21   
+0003             22   ;---------------------------------;
+0003             23   ; Wait 40 microseconds            ;
+0003             24   ;---------------------------------;
+0003             25   Wait40uSec:
+0003 C000        26       push AR0
+0005 78B1        27       mov R0, #177
+0007             28   L0:
+0007 00          29       nop
+0008 00          30       nop
+0009 D8FC        31       djnz R0, L0 ; 1+1+3 cycles->5*45.21123ns*177=40us
+000B D000        32       pop AR0
+000D 22          33       ret
+000E             34   
+000E             35   ;---------------------------------;
+000E             36   ; Wait 'R2' milliseconds          ;
+000E             37   ;---------------------------------;
+000E             38   WaitmilliSec:
+000E C000        39       push AR0
+0010 C001        40       push AR1
+0012 790F        41   L3: mov R1, #15
+0014 78A6        42   L2: mov R0, #166
+0016 D8FE        43   L1: djnz R0, L1 ; 3 cycles->3*45.21123ns*166=22.51519us
+0018 D9FA        44       djnz R1, L2 ; 22.51519us*45=1.013ms
+001A DAF6        45       djnz R2, L3 ; number of millisecons to wait passed in R2
+001C D001        46       pop AR1
+001E D000        47       pop AR0
+0020 22          48       ret
+0021             49   
+0021             50   ;---------------------------------;
+0021             51   ; Toggles the LCD's 'E' pin       ;
+0021             52   ;---------------------------------;
+0021             53   LCD_pulse:
+0021 D2B3        54       setb LCD_E
+0023 120003      55       lcall Wait40uSec
+0026 C2B3        56       clr LCD_E
+0028 22          57       ret
+0029             58   
+0029             59   ;---------------------------------;
+0029             60   ; Writes data to LCD              ;
+0029             61   ;---------------------------------;
+0029             62   WriteData:
+0029 D2B2        63       setb LCD_RS
+002B 020033      64       ljmp LCD_byte
+002E             65   
+002E             66   ;---------------------------------;
+002E             67   ; Writes command to LCD           ;
+002E             68   ;---------------------------------;
+002E             69   WriteCommand:
+002E C2B2        70       clr LCD_RS
+0030 020033      71       ljmp LCD_byte
+0033             72   
+0033             73   ;---------------------------------;
+0033             74   ; Writes acc to LCD in 4-bit mode ;
+0033             75   ;---------------------------------;
+0033             76   LCD_byte:
+0033             77       ; Write high 4 bits first
+0033 A2E7        78       mov c, ACC.7
+0035 92B7        79       mov LCD_D7, c
+0037 A2E6        80       mov c, ACC.6
+0039 92B6        81       mov LCD_D6, c
+003B A2E5        82       mov c, ACC.5
+003D 92B5        83       mov LCD_D5, c
+003F A2E4        84       mov c, ACC.4
+0041 92B4        85       mov LCD_D4, c
+0043 120021      86       lcall LCD_pulse
+0046             87   
+0046             88       ; Write low 4 bits next
+0046 A2E3        89       mov c, ACC.3
+0048 92B7        90       mov LCD_D7, c
+004A A2E2        91       mov c, ACC.2
+004C 92B6        92       mov LCD_D6, c
+004E A2E1        93       mov c, ACC.1
+0050 92B5        94       mov LCD_D5, c
+0052 A2E0        95       mov c, ACC.0
+0054 92B4        96       mov LCD_D4, c
+0056 120021      97       lcall LCD_pulse
+0059 22          98       ret
+005A             99   
+005A            100   ;---------------------------------;
+005A            101   ; Configure LCD in 4-bit mode     ;
+005A            102   ;---------------------------------;
+005A            103   LCD_4BIT:
+005A C2B3       104       clr LCD_E   ; Resting state of LCD's enable is zero
+005C            105       ; clr LCD_RW  ; Not used, pin tied to GND
+005C            106   
+005C            107       ; After power on, wait for the LCD start up time before initializing
+005C            108       ; NOTE: the preprogrammed power-on delay of 16 ms on the AT89LP51RC2
+005C            109       ; seems to be enough.  That is why these two lines are commented out.
+005C            110       ; Also, commenting these two lines improves simulation time in Multisim.
+005C            111       ; mov R2, #40
+005C            112       ; lcall WaitmilliSec
+005C            113   
+005C            114       ; First make sure the LCD is in 8-bit mode and then change to 4-bit mode
+005C 7433       115       mov a, #0x33
+005E 12002E     116       lcall WriteCommand
+0061 7433       117       mov a, #0x33
+0063 12002E     118       lcall WriteCommand
+0066 7432       119       mov a, #0x32 ; change to 4-bit mode
+0068 12002E     120       lcall WriteCommand
+006B            121   
+006B            122       ; Configure the LCD
+006B 7428       123       mov a, #0x28
+006D 12002E     124       lcall WriteCommand
+0070 740C       125       mov a, #0x0c
+0072 12002E     126       lcall WriteCommand
+0075 7401       127       mov a, #0x01 ;  Clear screen command (takes some time)
+0077 12002E     128       lcall WriteCommand
+007A            129   
+007A            130       ;Wait for clear screen command to finish. Usually takes 1.52ms.
+007A 7A02       131       mov R2, #2
+007C 12000E     132       lcall WaitmilliSec
+007F            133   
+007F            134   
+007F            135   
+007F            136   WriteCustomSmiley:
+007F            137   
+007F 7448       138            mov a,#48H      ;
+0081 12002E     139            lcall WriteCommand
+0084 7400       140            mov a, #00H     ;
+0086 120029     141            lcall WriteData
+0089 740A       142            mov a, #0XA     ;
+008B 120029     143            lcall WriteData
+008E 7400       144            mov a, #0X0     ;
+0090 120029     145            lcall WriteData
+0093 7404       146            mov a, #0X4     ;
+0095 120029     147            lcall WriteData
+0098 7411       148            mov a, #0X11    ;
+009A 120029     149            lcall WriteData
+009D 740E       150            mov a, #0XE     ;
+009F 120029     151            lcall WriteData
+00A2 7400       152            mov a, #0X0     ;
+00A4 120029     153            lcall WriteData
+00A7 7400       154            mov a, #00H     ;
+00A9 120029     155            lcall WriteData
+00AC 22         156            ret
+00AD            157   ;---------------------------------;
+00AD            158   ; Main loop.  Initialize stack,   ;
+00AD            159   ; ports, LCD, and displays        ;
+00AD            160   ; letters on the LCD              ;
+00AD            161   ;---------------------------------;
+00AD            162   myprogram:
+00AD 75817F     163       mov SP, #7FH
+00B0 12005A     164       lcall LCD_4BIT
+00B3 7480       165       mov a, #0x80 ; Move cursor to line 1 column 1
+00B5 12002E     166       lcall WriteCommand
+00B8            167       
+00B8 12000E     168            lcall Waitmillisec
+00BB 744A       169       mov a, #'J'
+00BD 120029     170       lcall WriteData
+00C0            171       
+00C0 12000E     172            lcall Waitmillisec
+00C3 7481       173       mov a, #0x81 ;
+00C5 12002E     174            lcall WriteCommand
+00C8 7465       175       mov a, #'e'
+00CA 120029     176       lcall WriteData
+00CD            177            
+00CD 12000E     178       lcall Waitmillisec
+00D0 7482       179       mov a, #0x82 ;
+00D2 12002E     180       lcall WriteCommand
+00D5 7472       181       mov a, #'r'
+00D7 120029     182       lcall WriteData
+00DA            183       
+00DA 12000E     184       lcall Waitmillisec
+00DD 7483       185       mov a, #0x83 ;
+00DF 12002E     186       lcall WriteCommand
+00E2 7472       187       mov a, #'r'
+00E4 120029     188       lcall WriteData
+00E7            189       
+00E7 12000E     190       lcall Waitmillisec
+00EA 7484       191       mov a, #0x84 ;
+00EC 12002E     192       lcall WriteCommand
+00EF 7479       193       mov a, #'y'
+00F1 120029     194       lcall WriteData
+00F4            195       
+00F4 12000E     196       lcall Waitmillisec
+00F7 7486       197       mov a, #0x86 ;
+00F9 12002E     198       lcall WriteCommand
+00FC 7446       199       mov a, #'F'
+00FE 120029     200       lcall WriteData
+0101            201       
+0101 12000E     202       lcall Waitmillisec
+0104 7487       203       mov a, #0x87 ;
+0106 12002E     204       lcall WriteCommand
+0109 7475       205       mov a, #'u'
+010B 120029     206       lcall WriteData
+010E            207       
+010E 12000E     208       lcall Waitmillisec
+0111 7489       209       mov a, #0x89
+0113 12002E     210       lcall WriteCommand
+0116 7401       211       mov a, #1H   ;
+0118 120029     212       lcall WriteData
+011B            213         
+011B 12000E     214       lcall Waitmillisec
+011E 74C0       215       mov a, #0xC0 ; Move cursor to line 2 column 3
+0120 12002E     216       lcall WriteCommand
+0123 7434       217       mov a, #'4'
+0125 120029     218       lcall WriteData
+0128            219       
+0128 12000E     220       lcall Waitmillisec
+012B 74C1       221       mov a, #0xC1 ; 
+012D 12002E     222       lcall WriteCommand
+0130 7436       223       mov a, #'6'
+0132 120029     224       lcall WriteData
+0135            225       
+0135 12000E     226       lcall Waitmillisec
+0138 74C2       227       mov a, #0xC2 ; 
+013A 12002E     228       lcall WriteCommand
+013D 7439       229       mov a, #'9'
+013F 120029     230       lcall WriteData
+0142            231       
+0142 12000E     232       lcall Waitmillisec
+0145 74C3       233       mov a, #0xC3 ; 
+0147 12002E     234       lcall WriteCommand
+014A 7434       235       mov a, #'4'
+014C 120029     236       lcall WriteData
+014F            237       
+014F 12000E     238       lcall Waitmillisec
+0152 74C4       239       mov a, #0xC4 ; 
+0154 12002E     240       lcall WriteCommand
+0157 7430       241       mov a, #'0'
+0159 120029     242       lcall WriteData
+015C            243       
+015C 12000E     244       lcall Waitmillisec
+015F 74C5       245       mov a, #0xC5 ; 
+0161 12002E     246       lcall WriteCommand
+0164 7434       247       mov a, #'4'
+0166 120029     248       lcall WriteData
+0169            249       
+0169 12000E     250       lcall Waitmillisec
+016C 74C6       251       mov a, #0xC6 ; 
+016E 12002E     252       lcall WriteCommand
+0171 7432       253       mov a, #'2'
+0173 120029     254       lcall WriteData
+0176            255       
+0176 12000E     256       lcall Waitmillisec
+0179 74C7       257       mov a, #0xC7 ; 
+017B 12002E     258       lcall WriteCommand
+017E 7435       259       mov a, #'5'
+0180 120029     260       lcall WriteData
+0183            261            
+0183            262                 
+0183 12000E     263       lcall Waitmillisec 
+0186 12000E     264       lcall Waitmillisec
+0189 12000E     265       lcall Waitmillisec
+018C 12000E     266       lcall Waitmillisec
+018F 12000E     267       lcall Waitmillisec
+0192 12000E     268       lcall Waitmillisec
+0195 12000E     269       lcall Waitmillisec
+0198 12000E     270       lcall Waitmillisec
+019B 12000E     271       lcall Waitmillisec
+019E 12000E     272       lcall Waitmillisec
+01A1            273      
+01A1            274   ;blink it three times
+01A1 7480       275            mov a, #0x80 ; Move cursor to line 1 column 1
+01A3 12002E     276       lcall WriteCommand
+01A6 7420       277       mov a, #' '
+01A8 120029     278       lcall WriteData
+01AB            279       
+01AB 7481       280       mov a, #0x81 ;
+01AD 12002E     281            lcall WriteCommand
+01B0 7420       282       mov a, #' '
+01B2 120029     283       lcall WriteData
+01B5            284       
+01B5 7482       285       mov a, #0x82 ;
+01B7 12002E     286       lcall WriteCommand
+01BA 7420       287       mov a, #' '
+01BC 120029     288       lcall WriteData
+01BF            289       
+01BF 7483       290       mov a, #0x83 ;
+01C1 12002E     291       lcall WriteCommand
+01C4 7420       292       mov a, #' '
+01C6 120029     293       lcall WriteData
+01C9            294       
+01C9 7484       295       mov a, #0x84 ;
+01CB 12002E     296       lcall WriteCommand
+01CE 7420       297       mov a, #' '
+01D0 120029     298       lcall WriteData
+01D3            299       
+01D3 7486       300       mov a, #0x86 ;
+01D5 12002E     301       lcall WriteCommand
+01D8 7420       302       mov a, #' '
+01DA 120029     303       lcall WriteData
+01DD            304       
+01DD 7487       305       mov a, #0x87 ;
+01DF 12002E     306       lcall WriteCommand
+01E2 7420       307       mov a, #' '
+01E4 120029     308       lcall WriteData
+01E7            309       
+01E7 7489       310       mov a, #0x89
+01E9 12002E     311       lcall WriteCommand
+01EC 7420       312       mov a, #' '  ;
+01EE 120029     313       lcall WriteData
+01F1            314         
+01F1            315       
+01F1 74C0       316       mov a, #0xC0 ; Move cursor to line 2 column 3
+01F3 12002E     317       lcall WriteCommand
+01F6 7420       318       mov a, #' '
+01F8 120029     319       lcall WriteData
+01FB            320       
+01FB 74C1       321       mov a, #0xC1 ; 
+01FD 12002E     322       lcall WriteCommand
+0200 7420       323       mov a, #' '
+0202 120029     324       lcall WriteData
+0205            325       
+0205 74C2       326       mov a, #0xC2 ; 
+0207 12002E     327       lcall WriteCommand
+020A 7420       328       mov a, #' '
+020C 120029     329       lcall WriteData
+020F            330       
+020F 74C3       331       mov a, #0xC3 ; 
+0211 12002E     332       lcall WriteCommand
+0214 7420       333       mov a, #' '
+0216 120029     334       lcall WriteData
+0219            335       
+0219 74C4       336       mov a, #0xC4 ; 
+021B 12002E     337       lcall WriteCommand
+021E 7420       338       mov a, #' '
+0220 120029     339       lcall WriteData
+0223            340       
+0223 74C5       341       mov a, #0xC5 ; 
+0225 12002E     342       lcall WriteCommand
+0228 7420       343       mov a, #' '
+022A 120029     344       lcall WriteData
+022D            345       
+022D 74C6       346       mov a, #0xC6 ; 
+022F 12002E     347       lcall WriteCommand
+0232 7420       348       mov a, #' '
+0234 120029     349       lcall WriteData
+0237            350       
+0237 74C7       351       mov a, #0xC7 ; 
+0239 12002E     352       lcall WriteCommand
+023C 7420       353       mov a, #' '
+023E 120029     354       lcall WriteData
+0241            355       
+0241 12000E     356       lcall Waitmillisec
+0244 12000E     357       lcall Waitmillisec
+0247 12000E     358       lcall Waitmillisec
+024A 12000E     359       lcall Waitmillisec
+024D 12000E     360       lcall Waitmillisec
+0250 12000E     361            lcall Waitmillisec
+0253            362            
+0253 7480       363            mov a, #0x80 ; 
+0255 12002E     364            lcall WriteCommand
+0258 744A       365       mov a, #'J'
+025A 120029     366       lcall WriteData
+025D            367       
+025D            368   
+025D 7481       369       mov a, #0x81 ;
+025F 12002E     370            lcall WriteCommand
+0262 7465       371       mov a, #'e'
+0264 120029     372       lcall WriteData
+0267            373            
+0267            374   
+0267 7482       375       mov a, #0x82 ;
+0269 12002E     376       lcall WriteCommand
+026C 7472       377       mov a, #'r'
+026E 120029     378       lcall WriteData
+0271            379       
+0271            380   
+0271 7483       381       mov a, #0x83 ;
+0273 12002E     382       lcall WriteCommand
+0276 7472       383       mov a, #'r'
+0278 120029     384       lcall WriteData
+027B            385       
+027B            386   
+027B 7484       387       mov a, #0x84 ;
+027D 12002E     388       lcall WriteCommand
+0280 7479       389       mov a, #'y'
+0282 120029     390       lcall WriteData
+0285            391       
+0285            392   
+0285 7486       393       mov a, #0x86 ;
+0287 12002E     394       lcall WriteCommand
+028A 7446       395       mov a, #'F'
+028C 120029     396       lcall WriteData
+028F            397       
+028F            398   
+028F 7487       399       mov a, #0x87 ;
+0291 12002E     400       lcall WriteCommand
+0294 7475       401       mov a, #'u'
+0296 120029     402       lcall WriteData
+0299            403       
+0299            404   
+0299 7489       405       mov a, #0x89
+029B 12002E     406       lcall WriteCommand
+029E 7401       407       mov a, #1H   ;
+02A0 120029     408       lcall WriteData
+02A3            409         
+02A3            410   
+02A3 74C0       411       mov a, #0xC0 ; Move cursor to line 2 column 3
+02A5 12002E     412       lcall WriteCommand
+02A8 7434       413       mov a, #'4'
+02AA 120029     414       lcall WriteData
+02AD            415       
+02AD 74C1       416       mov a, #0xC1 ; 
+02AF 12002E     417       lcall WriteCommand
+02B2 7436       418       mov a, #'6'
+02B4 120029     419       lcall WriteData
+02B7            420       
+02B7            421   
+02B7 74C2       422       mov a, #0xC2 ; 
+02B9 12002E     423       lcall WriteCommand
+02BC 7439       424       mov a, #'9'
+02BE 120029     425       lcall WriteData
+02C1            426       
+02C1            427   
+02C1 74C3       428       mov a, #0xC3 ; 
+02C3 12002E     429       lcall WriteCommand
+02C6 7434       430       mov a, #'4'
+02C8 120029     431       lcall WriteData
+02CB            432       
+02CB            433   
+02CB 74C4       434       mov a, #0xC4 ; 
+02CD 12002E     435       lcall WriteCommand
+02D0 7430       436       mov a, #'0'
+02D2 120029     437       lcall WriteData
+02D5            438       
+02D5            439   
+02D5 74C5       440       mov a, #0xC5 ; 
+02D7 12002E     441       lcall WriteCommand
+02DA 7434       442       mov a, #'4'
+02DC 120029     443       lcall WriteData
+02DF            444       
+02DF 74C6       445       mov a, #0xC6 ; 
+02E1 12002E     446       lcall WriteCommand
+02E4 7432       447       mov a, #'2'
+02E6 120029     448       lcall WriteData
+02E9            449       
+02E9 74C7       450       mov a, #0xC7 ; 
+02EB 12002E     451       lcall WriteCommand
+02EE 7435       452       mov a, #'5'
+02F0 120029     453       lcall WriteData
+02F3            454       
+02F3 12000E     455       lcall Waitmillisec
+02F6 12000E     456       lcall Waitmillisec
+02F9 12000E     457       lcall Waitmillisec
+02FC 12000E     458       lcall Waitmillisec
+02FF 12000E     459       lcall Waitmillisec
+0302 12000E     460       lcall Waitmillisec
+0305 12000E     461       lcall Waitmillisec
+0308 12000E     462       lcall Waitmillisec
+030B 12000E     463       lcall Waitmillisec
+030E 12000E     464       lcall Waitmillisec
+0311            465       
+0311 7480       466       mov a, #0x80 ;
+0313 12002E     467       lcall WriteCommand
+0316 7420       468       mov a, #' '
+0318 120029     469       lcall WriteData
+031B            470       
+031B 7481       471       mov a, #0x81 ;
+031D 12002E     472            lcall WriteCommand
+0320 7420       473       mov a, #' '
+0322 120029     474       lcall WriteData
+0325            475       
+0325 7482       476       mov a, #0x82 ;
+0327 12002E     477       lcall WriteCommand
+032A 7420       478       mov a, #' '
+032C 120029     479       lcall WriteData
+032F            480       
+032F 7483       481       mov a, #0x83 ;
+0331 12002E     482       lcall WriteCommand
+0334 7420       483       mov a, #' '
+0336 120029     484       lcall WriteData
+0339            485       
+0339 7484       486       mov a, #0x84 ;
+033B 12002E     487       lcall WriteCommand
+033E 7420       488       mov a, #' '
+0340 120029     489       lcall WriteData
+0343            490       
+0343 7486       491       mov a, #0x86 ;
+0345 12002E     492       lcall WriteCommand
+0348 7420       493       mov a, #' '
+034A 120029     494       lcall WriteData
+034D            495       
+034D 7487       496       mov a, #0x87 ;
+034F 12002E     497       lcall WriteCommand
+0352 7420       498       mov a, #' '
+0354 120029     499       lcall WriteData
+0357            500       
+0357 7489       501       mov a, #0x89
+0359 12002E     502       lcall WriteCommand
+035C 7420       503       mov a, #' '  ;
+035E 120029     504       lcall WriteData
+0361            505         
+0361            506       
+0361 74C0       507       mov a, #0xC0 ; Move cursor to line 2 column 3
+0363 12002E     508       lcall WriteCommand
+0366 7420       509       mov a, #' '
+0368 120029     510       lcall WriteData
+036B            511       
+036B 74C1       512       mov a, #0xC1 ; 
+036D 12002E     513       lcall WriteCommand
+0370 7420       514       mov a, #' '
+0372 120029     515       lcall WriteData
+0375            516       
+0375 74C2       517       mov a, #0xC2 ; 
+0377 12002E     518       lcall WriteCommand
+037A 7420       519       mov a, #' '
+037C 120029     520       lcall WriteData
+037F            521       
+037F 74C3       522       mov a, #0xC3 ; 
+0381 12002E     523       lcall WriteCommand
+0384 7420       524       mov a, #' '
+0386 120029     525       lcall WriteData
+0389            526       
+0389 74C4       527       mov a, #0xC4 ; 
+038B 12002E     528       lcall WriteCommand
+038E 7420       529       mov a, #' '
+0390 120029     530       lcall WriteData
+0393            531       
+0393 74C5       532       mov a, #0xC5 ; 
+0395 12002E     533       lcall WriteCommand
+0398 7420       534       mov a, #' '
+039A 120029     535       lcall WriteData
+039D            536       
+039D 74C6       537       mov a, #0xC6 ; 
+039F 12002E     538       lcall WriteCommand
+03A2 7420       539       mov a, #' '
+03A4 120029     540       lcall WriteData
+03A7            541       
+03A7 74C7       542       mov a, #0xC7 ; 
+03A9 12002E     543       lcall WriteCommand
+03AC 7420       544       mov a, #' '
+03AE 120029     545       lcall WriteData
+03B1            546       
+03B1 12000E     547       lcall Waitmillisec
+03B4 12000E     548       lcall Waitmillisec
+03B7 12000E     549       lcall Waitmillisec
+03BA 12000E     550       lcall Waitmillisec
+03BD 12000E     551       lcall Waitmillisec
+03C0            552       
+03C0 12000E     553            lcall Waitmillisec
+03C3            554            
+03C3 7480       555            mov a, #0x80 ; 
+03C5 12002E     556            lcall WriteCommand
+03C8 744A       557       mov a, #'J'
+03CA 120029     558       lcall WriteData
+03CD            559       
+03CD            560   
+03CD 7481       561       mov a, #0x81 ;
+03CF 12002E     562            lcall WriteCommand
+03D2 7465       563       mov a, #'e'
+03D4 120029     564       lcall WriteData
+03D7            565            
+03D7            566   
+03D7 7482       567       mov a, #0x82 ;
+03D9 12002E     568       lcall WriteCommand
+03DC 7472       569       mov a, #'r'
+03DE 120029     570       lcall WriteData
+03E1            571       
+03E1            572   
+03E1 7483       573       mov a, #0x83 ;
+03E3 12002E     574       lcall WriteCommand
+03E6 7472       575       mov a, #'r'
+03E8 120029     576       lcall WriteData
+03EB            577       
+03EB            578   
+03EB 7484       579       mov a, #0x84 ;
+03ED 12002E     580       lcall WriteCommand
+03F0 7479       581       mov a, #'y'
+03F2 120029     582       lcall WriteData
+03F5            583       
+03F5            584   
+03F5 7486       585       mov a, #0x86 ;
+03F7 12002E     586       lcall WriteCommand
+03FA 7446       587       mov a, #'F'
+03FC 120029     588       lcall WriteData
+03FF            589       
+03FF            590   
+03FF 7487       591       mov a, #0x87 ;
+0401 12002E     592       lcall WriteCommand
+0404 7475       593       mov a, #'u'
+0406 120029     594       lcall WriteData
+0409            595       
+0409            596   
+0409 7489       597       mov a, #0x89
+040B 12002E     598       lcall WriteCommand
+040E 7401       599       mov a, #1H   ;
+0410 120029     600       lcall WriteData
+0413            601         
+0413            602   
+0413 74C0       603       mov a, #0xC0 ; Move cursor to line 2 column 3
+0415 12002E     604       lcall WriteCommand
+0418 7434       605       mov a, #'4'
+041A 120029     606       lcall WriteData
+041D            607       
+041D 74C1       608       mov a, #0xC1 ; 
+041F 12002E     609       lcall WriteCommand
+0422 7436       610       mov a, #'6'
+0424 120029     611       lcall WriteData
+0427            612       
+0427            613   
+0427 74C2       614       mov a, #0xC2 ; 
+0429 12002E     615       lcall WriteCommand
+042C 7439       616       mov a, #'9'
+042E 120029     617       lcall WriteData
+0431            618       
+0431            619   
+0431 74C3       620       mov a, #0xC3 ; 
+0433 12002E     621       lcall WriteCommand
+0436 7434       622       mov a, #'4'
+0438 120029     623       lcall WriteData
+043B            624       
+043B            625   
+043B 74C4       626       mov a, #0xC4 ; 
+043D 12002E     627       lcall WriteCommand
+0440 7430       628       mov a, #'0'
+0442 120029     629       lcall WriteData
+0445            630       
+0445            631   
+0445 74C5       632       mov a, #0xC5 ; 
+0447 12002E     633       lcall WriteCommand
+044A 7434       634       mov a, #'4'
+044C 120029     635       lcall WriteData
+044F            636       
+044F 74C6       637       mov a, #0xC6 ; 
+0451 12002E     638       lcall WriteCommand
+0454 7432       639       mov a, #'2'
+0456 120029     640       lcall WriteData
+0459            641       
+0459 74C7       642       mov a, #0xC7 ; 
+045B 12002E     643       lcall WriteCommand
+045E 7435       644       mov a, #'5'
+0460 120029     645       lcall WriteData
+0463            646       
+0463 12000E     647       lcall Waitmillisec
+0466 12000E     648       lcall Waitmillisec
+0469 12000E     649       lcall Waitmillisec
+046C 12000E     650       lcall Waitmillisec
+046F 12000E     651       lcall Waitmillisec
+0472 12000E     652       lcall Waitmillisec
+0475 12000E     653       lcall Waitmillisec
+0478 12000E     654       lcall Waitmillisec
+047B 12000E     655       lcall Waitmillisec
+047E 12000E     656       lcall Waitmillisec
+0481            657       
+0481 7480       658            mov a, #0x80 ; Move cursor to line 1 column 1
+0483 12002E     659       lcall WriteCommand
+0486 7420       660       mov a, #' '
+0488 120029     661       lcall WriteData
+048B            662       
+048B 7481       663       mov a, #0x81 ;
+048D 12002E     664            lcall WriteCommand
+0490 7420       665       mov a, #' '
+0492 120029     666       lcall WriteData
+0495            667       
+0495 7482       668       mov a, #0x82 ;
+0497 12002E     669       lcall WriteCommand
+049A 7420       670       mov a, #' '
+049C 120029     671       lcall WriteData
+049F            672       
+049F 7483       673       mov a, #0x83 ;
+04A1 12002E     674       lcall WriteCommand
+04A4 7420       675       mov a, #' '
+04A6 120029     676       lcall WriteData
+04A9            677       
+04A9 7484       678       mov a, #0x84 ;
+04AB 12002E     679       lcall WriteCommand
+04AE 7420       680       mov a, #' '
+04B0 120029     681       lcall WriteData
+04B3            682       
+04B3 7486       683       mov a, #0x86 ;
+04B5 12002E     684       lcall WriteCommand
+04B8 7420       685       mov a, #' '
+04BA 120029     686       lcall WriteData
+04BD            687       
+04BD 7487       688       mov a, #0x87 ;
+04BF 12002E     689       lcall WriteCommand
+04C2 7420       690       mov a, #' '
+04C4 120029     691       lcall WriteData
+04C7            692       
+04C7 7489       693       mov a, #0x89
+04C9 12002E     694       lcall WriteCommand
+04CC 7420       695       mov a, #' '  ;
+04CE 120029     696       lcall WriteData
+04D1            697         
+04D1            698       
+04D1 74C0       699       mov a, #0xC0 ; Move cursor to line 2 column 3
+04D3 12002E     700       lcall WriteCommand
+04D6 7420       701       mov a, #' '
+04D8 120029     702       lcall WriteData
+04DB            703       
+04DB 74C1       704       mov a, #0xC1 ; 
+04DD 12002E     705       lcall WriteCommand
+04E0 7420       706       mov a, #' '
+04E2 120029     707       lcall WriteData
+04E5            708       
+04E5 74C2       709       mov a, #0xC2 ; 
+04E7 12002E     710       lcall WriteCommand
+04EA 7420       711       mov a, #' '
+04EC 120029     712       lcall WriteData
+04EF            713       
+04EF 74C3       714       mov a, #0xC3 ; 
+04F1 12002E     715       lcall WriteCommand
+04F4 7420       716       mov a, #' '
+04F6 120029     717       lcall WriteData
+04F9            718       
+04F9 74C4       719       mov a, #0xC4 ; 
+04FB 12002E     720       lcall WriteCommand
+04FE 7420       721       mov a, #' '
+0500 120029     722       lcall WriteData
+0503            723       
+0503 74C5       724       mov a, #0xC5 ; 
+0505 12002E     725       lcall WriteCommand
+0508 7420       726       mov a, #' '
+050A 120029     727       lcall WriteData
+050D            728       
+050D 74C6       729       mov a, #0xC6 ; 
+050F 12002E     730       lcall WriteCommand
+0512 7420       731       mov a, #' '
+0514 120029     732       lcall WriteData
+0517            733       
+0517 74C7       734       mov a, #0xC7 ; 
+0519 12002E     735       lcall WriteCommand
+051C 7420       736       mov a, #' '
+051E 120029     737       lcall WriteData
+0521            738       
+0521 12000E     739       lcall Waitmillisec
+0524 12000E     740       lcall Waitmillisec
+0527 12000E     741       lcall Waitmillisec
+052A 12000E     742       lcall Waitmillisec
+052D 12000E     743       lcall Waitmillisec
+0530 12000E     744            lcall Waitmillisec
+0533            745            
+0533 7480       746            mov a, #0x80 ; 
+0535 12002E     747            lcall WriteCommand
+0538 744A       748       mov a, #'J'
+053A 120029     749       lcall WriteData
+053D            750       
+053D            751   
+053D 7481       752       mov a, #0x81 ;
+053F 12002E     753            lcall WriteCommand
+0542 7465       754       mov a, #'e'
+0544 120029     755       lcall WriteData
+0547            756            
+0547            757   
+0547 7482       758       mov a, #0x82 ;
+0549 12002E     759       lcall WriteCommand
+054C 7472       760       mov a, #'r'
+054E 120029     761       lcall WriteData
+0551            762       
+0551            763   
+0551 7483       764       mov a, #0x83 ;
+0553 12002E     765       lcall WriteCommand
+0556 7472       766       mov a, #'r'
+0558 120029     767       lcall WriteData
+055B            768       
+055B            769   
+055B 7484       770       mov a, #0x84 ;
+055D 12002E     771       lcall WriteCommand
+0560 7479       772       mov a, #'y'
+0562 120029     773       lcall WriteData
+0565            774       
+0565            775   
+0565 7486       776       mov a, #0x86 ;
+0567 12002E     777       lcall WriteCommand
+056A 7446       778       mov a, #'F'
+056C 120029     779       lcall WriteData
+056F            780       
+056F            781   
+056F 7487       782       mov a, #0x87 ;
+0571 12002E     783       lcall WriteCommand
+0574 7475       784       mov a, #'u'
+0576 120029     785       lcall WriteData
+0579            786       
+0579            787   
+0579 7489       788       mov a, #0x89
+057B 12002E     789       lcall WriteCommand
+057E 7401       790       mov a, #1H   ;
+0580 120029     791       lcall WriteData
+0583            792         
+0583            793   
+0583 74C0       794       mov a, #0xC0 ; Move cursor to line 2 column 3
+0585 12002E     795       lcall WriteCommand
+0588 7434       796       mov a, #'4'
+058A 120029     797       lcall WriteData
+058D            798       
+058D 74C1       799       mov a, #0xC1 ; 
+058F 12002E     800       lcall WriteCommand
+0592 7436       801       mov a, #'6'
+0594 120029     802       lcall WriteData
+0597            803       
+0597            804   
+0597 74C2       805       mov a, #0xC2 ; 
+0599 12002E     806       lcall WriteCommand
+059C 7439       807       mov a, #'9'
+059E 120029     808       lcall WriteData
+05A1            809       
+05A1            810   
+05A1 74C3       811       mov a, #0xC3 ; 
+05A3 12002E     812       lcall WriteCommand
+05A6 7434       813       mov a, #'4'
+05A8 120029     814       lcall WriteData
+05AB            815       
+05AB            816   
+05AB 74C4       817       mov a, #0xC4 ; 
+05AD 12002E     818       lcall WriteCommand
+05B0 7430       819       mov a, #'0'
+05B2 120029     820       lcall WriteData
+05B5            821       
+05B5            822   
+05B5 74C5       823       mov a, #0xC5 ; 
+05B7 12002E     824       lcall WriteCommand
+05BA 7434       825       mov a, #'4'
+05BC 120029     826       lcall WriteData
+05BF            827       
+05BF 74C6       828       mov a, #0xC6 ; 
+05C1 12002E     829       lcall WriteCommand
+05C4 7432       830       mov a, #'2'
+05C6 120029     831       lcall WriteData
+05C9            832       
+05C9 74C7       833       mov a, #0xC7 ; 
+05CB 12002E     834       lcall WriteCommand
+05CE 7435       835       mov a, #'5'
+05D0 120029     836       lcall WriteData
+05D3            837       
+05D3            838       
+05D3            839   ;wait at end
+05D3 12000E     840            lcall Waitmillisec
+05D6 12000E     841            lcall Waitmillisec
+05D9 12000E     842       lcall Waitmillisec
+05DC 12000E     843       lcall Waitmillisec
+05DF 12000E     844       lcall Waitmillisec
+05E2 12000E     845       lcall Waitmillisec
+05E5 12000E     846       lcall Waitmillisec
+05E8 12000E     847       lcall Waitmillisec
+05EB 12000E     848       lcall Waitmillisec
+05EE 12000E     849       lcall Waitmillisec
+05F1 12000E     850       lcall Waitmillisec
+05F4            851   forever:
+05F4 1200AD     852            lcall myprogram
+05F7 80FB       853       sjmp forever
+05F9            854   END
